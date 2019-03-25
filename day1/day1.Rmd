@@ -1,0 +1,684 @@
+---
+title: "Differential Gene Expression Analysis Day 1: Concepts"
+runtime: shiny_prerendered
+output:
+  learnr::tutorial:
+    progressive: true
+---
+
+<style type="text/css">
+body{ font-size: 170%; }
+</style>
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, comment = NA)
+library(tidyverse)
+library(shiny)
+library(DT)
+library(learnr)
+library(MASS)
+options(scipen=100)
+```
+
+| [Day 1: Concepts](./day1.Rmd) | [Day 2: Sleuth tutorial](../day2/day2.Rmd) | [Day 3: RNA-Seq analysis](../day3/day3.Rmd) |
+|-------------------------------|--------------------------------------------|---------------------------------------------|
+
+## Introduction 
+
+During the course, we will show you how to produce and analyse qPCR and RNA-Seq data. As both methods are concerned with gene expression, there are shared underlying concepts between them. In this section, we'll explore what we mean by gene expression in general; we'll then go on to consider qPCR and RNA-Seq in detail.
+
+We have already covered how genes are *expressed* as RNA transcripts. We can measure the *abundance* of a transcript; ideally, we would record the actual number of transcripts present in the sample, but we can't (yet) measure this directly, so we use a range of other quantities as proxies for transcript count. For this section, we will use generic *Abundance* values for genes, without worrying about their units or what they represent.
+
+Later on in the course, we will discuss alternate transcripts; as genes can have multiple exons and introns, a gene may have multiple alternate transcripts composed of different combinations of its exons. However, for this section, we will talk about only about the expression of genes, as if genes only had one possible transcript.
+
+This section assumes very little prior understanding of statistics or experimental design, so feel free to skim topics if they are already familiar to you. But it never hurts to revise the basics, especially in a new context.
+
+### Exercise
+
+Designing qPCR and RNA-seq experiments is hard, and we need to make sure we are going to get the results we need. To focus our minds, take a few moments to think about your work by considering the following questions:
+
+1. What biological questions are you trying to answer?
+2. Which species are you working with?
+3. How many samples do you have, or can you generate?
+4. Do you already know which genes you are interested in?
+5. What would a finished analysis look like?
+
+Please keep these questions in mind as we go through the course.
+
+
+## Variables and replicates
+
+We are usually interested in *changes* in gene expression. For example, we might want to compare:
+
+* samples treated with a drug to untreated samples
+* different tissues from one organism
+* samples from different time points
+* mutant strains to wild-type strains
+
+or any other difference between samples you can think of. We want to see how genes change in response to these differences.
+
+Each type of difference is called a *variable*, and each possible value of a variable is called a *condition*. For example, if we take samples from three different laboratories, we might have a Laboratory variable, where the conditions are the names of the laboratories.
+
+### Exercise
+Each of the bullet points above describes one possible variable. What might be a suitable name for each variable, and what conditions might each variable have? Does the variable have an obvious control condition?
+
+Click Continue to see some possible answers.
+
+### Answers
+Here are some possible definitions for our variables:
+
+* Treatment: Untreated / Treated
+* Tissue: Lung / Heart / Brain
+* Time: 0h / 2h / 4h / 6h
+* Strain: Wildtype / Mutant
+
+Where we want to test a particular intervention, such as a drug treatment or a mutation, we usually call the untreated, wild type or 'normal' condition the *control* condition, but not all variables fit this pattern; here, Tissue and Time do not have obvious control conditions.
+
+Because biological samples vary considerably, we need to take multiple samples for each condition so we can attempt to measure this variation. If we take six drugged samples and six untreated samples, we say we have six *replicates* of each condition.
+
+(It is not necessary for the same number of replicates to be taken for each condition, but it is a good idea to aim for this, so each condition has consistent data.)
+
+
+## Differences in gene expression
+
+We often report sets of *differentially expressed* genes, which are those genes that change in expression from one condition to another. But what does it mean to say that a gene is differentially expressed?
+
+### Exercise
+
+Suppose we have six replicates of two conditions of a treatment variable, Control and Treated (so twelve samples in all). We measure the abundance of ten genes in each of these twelve samples and get the following results:
+
+```{r, echo=FALSE, context="server"}
+gene_names = paste("Gene", 1:10)
+#genes_sim <- tibble(
+#              Gene=factor(rep(gene_names, each=12), levels=gene_names),
+#              Condition=rep(rep(c("Control","Treated"), each=6), 10),
+#              Abundance=c(rnorm(6, 100, 10), rnorm(6, 200, 10), # Gene 1
+#                          rnorm(6, 100, 3), rnorm(6, 100, 3), # Gene 2
+#                          rnorm(6, 100, 100), rnorm(6, 200, 100), # Gene 3
+#                          rnorm(6, 100, 10), rnorm(6, 100, 50), # Gene 4
+#                          rnorm(6, 40, 10), rnorm(6, 10, 2), # Gene 5
+#                          rnorm(6, 10, 2), rnorm(6, 10, 2), # Gene 6
+#                          rnorm(6, 100, 10), rnorm(6, 50, 10), # Gene 7
+#                          rnorm(6, 50, 10), rnorm(6, 100, 10), # Gene 8
+#                          rnorm(6, 50, 10), rnorm(6, 200, 20), # Gene 9
+#                          rnorm(6, 20, 2), rnorm(6, 10, 2)  # Gene 10
+#                         )
+#              )
+#write_tsv(genes_sim, "genes_simulated.tsv")
+genes_sim<-read_tsv("genes_simulated_values.tsv") %>% mutate(Gene=factor(Gene, levels=gene_names))
+```
+
+```{r, echo=FALSE}
+checkboxInput("fixedscale", label = "Fixed abundance scale", value=TRUE)
+plotOutput("genePlot")
+```
+
+```{r gene plot, context="server"}
+output$genePlot<-renderPlot({
+  ggplot(genes_sim, aes(Condition, Abundance, colour=Condition)) + geom_point() + facet_wrap(Gene~., ncol=5, scales=ifelse(input$fixedscale, "fixed", "free")) + theme_bw() + ylim(0,NA) + guides(colour=FALSE)
+})
+```
+
+* Which of these genes would you say are differentially expressed?
+* Which of them look biologically interesting?
+* Make sure to pay attention to the abundance values. Try unchecking the fixed scale box to see more appropriate scales for each gene individually. Which genes look differentially expressed now?
+
+
+## Absolute and relative differences
+
+Clearly some of our genes are differentially expressed. Gene 1 increases with treatment; Gene 7 decreases. If genes increase in expression, we say they are *upregulated*; if they decrease, they are *downregulated*.
+
+We can also see that some genes have higher abundances *in general* than others. For example, the absolute abundances for Gene 1 are higher than those for Gene 8.
+
+But differences in absolute abundance may obscure relationships between genes. For example, for both Gene 1 and Gene 8, the Treated abundance is *double* the Control abundance - a 2-fold increase. We say the treatment is associated with a *fold change* of 2 for these two genes.
+
+Fold change is a useful measure, because genes with similar fold changes may be similarly regulated; for example, a set of 3-fold downregulated genes may be repressed by some other 3-fold upregulated gene.
+
+Fold change values are multipliers; if the control gene has abundance 1:
+
+* a 2-fold increase is $1*2$
+* a 3-fold increase is $1*3$
+* no change is $1*1$
+
+We can represent decreases in a similar way:
+
+* a 2-fold decrease is $1*{1/2}$ or $1*0.5$
+* a 4-fold decrease is $1*{1/4}$ or $1*0.25$
+
+Let's see how this works in practice.
+
+### Exercise
+
+This plot shows the same genes as before, but now with the means for each condition calculated and shown as horizontal lines. We also have a table listing the mean abundance values for each condition, the absolute difference between these means, and the fold change between these means.
+
+```{r, echo=FALSE, context="server"}
+genes_means <- genes_sim %>% 
+  group_by(Gene, Condition) %>% 
+  summarise(Mean_Abundance = mean(Abundance)) %>% 
+  spread(Condition, Mean_Abundance) %>% 
+  mutate(Absolute_Difference = Treated - Control, 
+         Fold_Change = Treated / Control) %>% 
+  ungroup()
+```
+
+```{r, echo=FALSE}
+checkboxInput("fixedscale2", label = "Fixed abundance scale", value=TRUE)
+plotOutput("meanPlot")
+dataTableOutput("meanTable")
+```
+
+```{r mean plot, context="server"}
+output$meanPlot<-renderPlot({
+  ggplot(genes_sim, aes(Condition, Abundance, colour=Condition)) + geom_point() + stat_summary(fun.y="mean", geom="errorbar", aes(ymax = ..y.., ymin= ..y..), width=0.4) + facet_wrap(Gene~., ncol=5, scales=ifelse(input$fixedscale2, "fixed", "free")) + theme_bw() + ylim(0,NA) + guides(colour=FALSE)
+})
+output$meanTable<-renderDataTable(DT::datatable(genes_means, options=list(searching=FALSE, paging=FALSE)) %>% formatRound(columns=c("Control", "Treated", "Absolute_Difference", "Fold_Change"), digits=2))
+```
+
+
+The table can be sorted by clicking on the column names. Try sorting the table above by Absolute Difference or Fold Change and answer the following questions:
+
+1. Which genes have very similar fold changes? How similar are the absolute differences for these genes?
+2. Which genes have a two-fold decrease in expression in the Treatment condition?
+3. Which genes show little change? How similar are the abundances and absolute differences for these genes? What are the fold change values?
+
+Click Continue to reveal some possible answers.
+
+### Answers
+
+1. Genes 7 and 10 have fold changes of ~0.5; Genes 2 and 4 are ~1; Genes 1 and 8 are ~2.
+2. A fold change of 0.5 is a two-fold decrease, so Genes 7 and 10.
+3. Genes 2, 4 and 6 have similar means for both conditions, although the spread of data varies for each gene. All the fold changes are around 1, but Genes 4 and 6, with more spread, have larger fold change differences than Gene 2. Genes 2 and 6 have roughly similar absolute differences, but because the overall abundance of Gene 6 is much lower than Gene 2, Gene 6 tends to have a larger distance from a fold change of 1.
+
+
+
+
+## Log fold changes
+
+We are often interested in visualising and filtering our gene sets based on fold change. For example, we might want to select all of the genes that are more than 2-fold up- or down-regulated, and we might want to investigate whether genes with similar fold changes in either direction are regulating each other.
+
+However, look at this plot of fold changes from our gene set:
+
+```{r, echo=FALSE, context="server"}
+genes_means_logs <- mutate(genes_means, Log2_Fold_Change = log2(Fold_Change), GeneNum=1:10)
+```
+
+```{r, echo=FALSE}
+plotOutput("linFCPlot", height=120)
+```
+
+```{r linear fold change plot, context="server"}
+output$linFCPlot<-renderPlot({
+  ggplot(genes_means_logs, aes(Fold_Change, y=GeneNum, label=1:10, colour=Log2_Fold_Change)) + 
+    geom_text() + 
+    scale_x_continuous(name="Fold Change", breaks=seq(0,5,0.5),limits=c(0,NA)) + 
+    scale_y_reverse(name="Gene", limits=c(11,0)) +
+    scale_colour_gradient2(low="blue", mid="gray60", high="red", limits=c(-2.5,2.5), breaks=c(-2.5, 0, 2.5), labels=c(" Down", " No change", " Up")) + 
+    theme_minimal() + 
+    theme(axis.text.y=element_blank(), panel.grid.major.y=element_blank(), panel.grid.minor.y=element_blank(), 
+          legend.title=element_blank())
+})
+```
+
+(The vertical positions don't mean anything here, they are just to separate the genes.)
+
+The downregulated genes get clumped together between 0 and 1, and it is hard to see which genes might have 2-fold changes in either direction, because the scale is not symmetric; 2-fold upregulation is at 2, but 2-fold downregulation is at 0.5. It is also awkward that 'no change' is a '1-fold change'.
+
+It would be useful if this plot was symmetric around 0, so that 0 represents no change and a 2-fold downregulated gene has the same magnitude as a 2-fold upregulated gene.
+
+We can achieve this by calculating the logarithms of our fold change values. Logarithms are the inverse of exponents:
+
+* $2*2*2 = 2^3 = 8$ (2 raised to the power of 3 equals 8)
+* the inverse of this is $log2(8)=3$ (the base 2 logarithm of 8 is 3).
+
+Just as we can raise any number to a power, we can use any base for logarithms; for example, as $10^2=100$, $log10(100)=2$.
+
+However, we typically use log2 fold changes (often abbreviated to log2FC) for gene expression. Here are our genes on a log2 scale:
+
+```{r, echo=FALSE}
+plotOutput("logFCPlot", height=120)
+```
+
+```{r log fold change plot, context="server"}
+output$logFCPlot<-renderPlot({
+  ggplot(genes_means_logs, aes(Log2_Fold_Change, y=GeneNum, label=1:10, colour=Log2_Fold_Change)) +
+    geom_text() +
+    scale_x_continuous(name="Log2 Fold Change", breaks=seq(-2,2,0.5), limits=c(-2.5,2.5)) +
+    scale_y_reverse(name="Gene", limits=c(11,0)) +
+    scale_colour_gradient2(low="blue", mid="gray60", high="red", limits=c(-2.5,2.5),
+                           breaks=c(-2, -1, 0, 1, 2), labels=c(" -2", " -1", "  0", "  1", "  2")) + 
+    theme_minimal() +
+    theme(axis.text.y=element_blank(), panel.grid.major.y=element_blank(), panel.grid.minor.y=element_blank(), legend.title=element_blank())
+})
+```
+
+Now our gene expression is symmetric; 'no change' is 0, and, for example, the 2-fold downregulated (log2FC=-1) Genes 7 and 10 are similarly distant from 0 as the 2-fold upregulated (log2FC=1) Gene 8.
+
+This plot shows how linear fold changes correspond to logarithmic fold changes:
+
+```{r, echo=FALSE}
+plotOutput("loglinPlot")
+```
+
+```{r linear to log, context="server"}
+loglin<-data.frame(FoldChange=c(0.125, 0.25, 0.5, 1, 2, 4, 8)) %>% mutate(Log2FoldChange=log2(FoldChange))
+output$loglinPlot<-renderPlot({
+  ggplot(loglin, aes(FoldChange, Log2FoldChange)) + geom_point() + theme_bw() + ylab("Log2 Fold Change") + scale_y_continuous(breaks=seq(-3,3,0.5), limits=c(-3,3)) + xlab("Fold Change") + scale_x_continuous(breaks=seq(0,8), minor_breaks=seq(0.5,7.5), limits=c(0,NA))
+})
+```
+
+The x-axis here shows fold changes, and the y-axis shows log2 fold changes, calculated by the formula $y=log2(x)$.
+
+We'll be using log fold changes throughout the course, so build your intuition for them by answering these questions:
+
+```{r fold change quiz, echo=FALSE}
+quiz(caption = "Quiz: Fold Changes",
+  question("What is the log2 fold change value for a 2-fold upregulation?",
+    answer("-1", message="Negative log2 fold change values represent downregulation, not upregulation."),
+    answer("0", message="Log2 fold change of 0 means no change."),
+    answer("1", correct = TRUE, message="$2^1=2$"),
+    answer("2", message="A log2 fold change of 2 is a $2^{2}=4$-fold upregulation, because log2(4)=2."),
+    answer("4", message="A 4-fold upregulation has a log2 value of 2. What is the inverse of this, the log2 value for a 2-fold upregulation?"),
+    allow_retry = TRUE
+  ),
+  question("What fold change corresponds to a log2 fold change value of -2?",
+    answer("-2", message="Fold change values cannot be below 0. Fold changes multiply abundances, and gene abundances must be positive (we cannot have negative copies of a gene, for example). If abundance was 2, 2*-2=-4, which does not make sense."),
+    answer("0.25", correct=TRUE, message="$2^{-2}=0.25$, or 1/4, a 4-fold downregulation."),
+    answer("0.5", message="This would be correct for a log2 fold change value of -1, because $2^{-1}=0.5$."),
+    answer("4", message="This would be correct for a log2 fold change value of 2, not -2."),
+    allow_retry = TRUE
+  ),
+  question("The fold change for an 8-fold upregulation is 8; what is the fold change for an 8-fold downregulation?",
+    answer("-8", message="Linear fold changes can not be negative, because abundances must be positive. Remember fold changes are multipliers; if abundance is 2, $2*-8 = -16$, which does not make sense."),
+    answer("-3", message="This is the log2 fold change, not the linear fold change. Linear fold changes can not be negative."),
+    answer("0.125", correct=TRUE, message="This is 1/8."),
+    answer("0.25", message="This would be correct for a 4-fold downregulation, or 1/4."),
+    answer("3", message="This is the log2 fold change for an 8-fold upregulation, not the linear fold change for an 8-fold downregulation."),
+    allow_retry = TRUE
+  ),
+  question("The log2 fold change for an 8-fold upregulation is 3; what is the log2 fold change for an 8-fold downregulation?",
+    answer("-8", message="This is a 1/256 fold change, because $2^{-8}=1/256$ (as $2^{8}=256$)."),
+    answer("-3", correct=TRUE, message="$2^{-3}=1/8$."),
+    answer("0.125", message="This is 1/8, the linear fold change, not the log2 fold change."),
+    answer("8", message="Downregulated genes have a negative log2 fold change."),
+    allow_retry = TRUE
+  )
+)
+```
+
+## Variation in expression
+
+So far we have seen that genes can have small or large overall abundances, and that genes can have small or large relative differences in abundance between conditions (fold changes). But we also need to consider *variation* in gene expression.
+
+Consider Genes 1 and 3 from our dataset:
+
+```{r, echo=FALSE}
+plotOutput("genevarPlot")
+```
+
+```{r gene variation, context="server"}
+output$genevarPlot<-renderPlot({
+  ggplot(genes_sim %>% filter(Gene %in% c("Gene 1", "Gene 3")), aes(Condition, Abundance, colour=Condition)) + geom_point() + facet_wrap(Gene~., ncol=5) + theme_bw() + ylim(0,NA) + guides(colour=FALSE) + stat_summary(fun.y="mean", geom="errorbar", aes(ymax = ..y.., ymin= ..y..), width=0.4)
+})
+```
+
+It seems clear that Gene 1 is differentially expressed, but it is not clear whether Gene 3 is. The abundances for Gene 3 are spread over a much wider range, and the means for each condition are within the range for the other condition. We are much less confident that the differences in the means is reflecting some true biological difference. Perhaps if we took another set of samples, the means would be much more similar.
+
+Actually, we can test this. The abundances for Gene 1 and Gene 3 are not from real genes, but are simulated; both genes are programmed to have the same mean values in each condition (Control=100, Treatment=200) but different amounts of variation (Gene 3 is 10 times as varied as Gene 1).
+
+Here's what happens if we simulate 5 genes like Gene 1, and 5 genes like Gene 3:
+
+```{r, echo=FALSE, context="server"}
+generep_names = paste("Gene ", rep(c(1,3),each=5), c("A","B","C","D","E"), sep="")
+genereps <- tibble(
+              Gene=factor(rep(generep_names, each=12), levels=generep_names),
+              Condition=rep(rep(c("Control","Treated"), each=6), 10),
+              Abundance=c(rnorm(6, 100, 10), rnorm(6, 200, 10), # Gene 1A
+                          rnorm(6, 100, 10), rnorm(6, 200, 10), # Gene 1B
+                          rnorm(6, 100, 10), rnorm(6, 200, 10), # Gene 1C
+                          rnorm(6, 100, 10), rnorm(6, 200, 10), # Gene 1D
+                          rnorm(6, 100, 10), rnorm(6, 200, 10), # Gene 1E
+                          rnorm(6, 100, 100), rnorm(6, 200, 100), # Gene 3A
+                          rnorm(6, 100, 100), rnorm(6, 200, 100), # Gene 3B
+                          rnorm(6, 100, 100), rnorm(6, 200, 100), # Gene 3C
+                          rnorm(6, 100, 100), rnorm(6, 200, 100), # Gene 3D
+                          rnorm(6, 100, 100), rnorm(6, 200, 100) # Gene 3E
+                         )
+              )
+```
+
+```{r, echo=FALSE}
+plotOutput("generepsPlot")
+```
+
+```{r gene replicates, context="server"}
+output$generepsPlot<-renderPlot({
+  ggplot(genereps, aes(Condition, Abundance, colour=Condition)) + geom_point() + facet_wrap(Gene~., ncol=5, scales=ifelse(input$fixedscale, "fixed", "free")) + theme_bw() + ylim(0,NA) + guides(colour=FALSE) + stat_summary(fun.y="mean", geom="errorbar", aes(ymax = ..y.., ymin= ..y..), width=0.4)
+})
+```
+
+Although the Gene 1 means vary a little, they are much more consistent than the Gene 3 means, which vary a lot, and sometimes are not very different at all. The Treated mean may even be lower than the Control mean in a few cases.
+
+Also, all the abundances for each condition in Gene 1 are well separated, whereas Gene 3's abundances always overlap, and their ranges often include both condition means. We can be confident that the treatment affects Gene 1, but it is not clear that it truly affects Gene 3.
+
+To say whether a gene is differentially expressed, we must take variation into account.
+
+
+## Statistical distributions
+
+We can quantify the variation in abundances for a gene by assuming the abundances are drawn from some known statistical distribution. We can then fit that distribution to our data, and then compare distributions for different conditions to see how similar they are.
+
+For now, we'll assume that our data is drawn from the familiar [normal distribution](https://en.wikipedia.org/wiki/Normal_distribution); we'll need to use other distributions later, but the same principles will apply.
+
+The plot below shows the normal distribution that generates the data for Gene 1, along with a set of points that are drawn from the distribution:
+
+```{r, echo=FALSE}
+sliderInput("replicates", label= "Replicates:",
+            min = 1, max = 50, value = 6, step = 1)
+actionButton("resample", "Resample")
+plotOutput("Gene1NormPlot")
+```
+
+```{r Gene 1 Normal Distribution, context="server"}
+gene1mean<-100
+gene1sd<-10
+dataInput1<-reactive(data.frame(x=rnorm(input$replicates, gene1mean, gene1sd), action=rep(input$resample, input$replicates)))
+output$Gene1NormPlot<-renderPlot({
+  ggplot(dataInput1(), aes(x)) + geom_point(aes(y=0)) + stat_function(fun=dnorm, n=101, args=list(mean=gene1mean, sd=gene1sd), lty="dashed") + theme_bw() + scale_x_continuous(limits=c(0,200), breaks=seq(0,200,10)) + scale_y_continuous(breaks=seq(0,0.2,0.005))
+})
+```
+
+You can adjust the number of replicates here to generate more or less data from this distribution, or just click 'Resample' to draw another set of abundances for the same number of replicates.
+
+What does it mean to draw from the distribution here? The normal distribution is a probability distribution, which means it expresses what the probability of getting each value of x is. The area under the curve sums to 1.
+
+The mean value for Gene 1 is 100, which is where the peak of the curve is found, at a y value of about 0.04. This means that about 4% of the values in the sample will be close to (though not exactly) the mean.
+
+Similarly, the curve passes through 80 and 120 on the x-axis at 0.005 on the y-axis, so we might expect about 0.5% of the data to be around 80, and another 0.5% to be around 120. More distant values from the mean are less likely.
+
+The normal distribution has two parameters, the mean (which controls the location of the bell curve) and the standard deviation (which determines the width of the bell curve). You can explore this in the plot below. As you change the mean and the standard deviation (left sliders), you may need to adjust the range of the x axis and the height of the y axis (right sliders) in order to see the entire bell curve.
+
+```{r, echo=FALSE}
+fixedRow(
+  column(6, 
+    sliderInput("mean", label = "Mean:",
+                min = 0, max = 200, value = 100, step = 1),
+    sliderInput("sd", label = "Standard Deviation:",
+                min = 10, max = 100, value = 10, step = 1),
+    sliderInput("replicates2", label= "Replicates:",
+                min = 1, max = 50, value = 6, step = 1)
+  ),
+  column(6, 
+    sliderInput("range", label = "X Range:",
+                min = -200, max = 400, value = c(0, 200), step = 1),
+    sliderInput("ymax", label = "Y Maximum:",
+                min = 0.01, max= 0.1, value = 0.04, step=0.01),
+    actionButton("resample2", "Resample")
+  )
+)
+fixedRow(
+  column(12,
+    plotOutput("drawNormPlot")
+  )
+)
+```
+
+```{r drawing from normal distribution, context="server"}
+dataInput2<-reactive(data.frame(x=rnorm(input$replicates2, input$mean, input$sd), action=rep(input$resample2, input$replicates2)))
+output$drawNormPlot<-renderPlot({
+  ggplot(dataInput2(), aes(x)) + geom_point(aes(y=0)) + stat_function(fun=dnorm, n=101, args=list(mean=input$mean, sd=input$sd), lty="dashed") + theme_bw() + ylim(0, input$ymax) + scale_x_continuous(limits=input$range)
+})
+```
+
+### Exercise
+
+Gene 1 and Gene 3 have the same mean of 100, but Gene 1's standard deviation is 10, but Gene 3's standard deviation is 100. What does Gene 3's normal distribution look like? What is the peak y value for Gene 3's distribution, compared to Gene 1's distribution? (Adjust the plot dimensions to show the whole bell curve.) Why might this be different to the peak y value for Gene 1? 
+
+## Fitting distributions
+
+We have seen that we can think of our gene abundances as being drawn from some distribution with particular parameters. If we knew the true underlying distributions, we could say explicitly what the differences between our genes were.
+
+Here is a plot that shows the actual distributions for our ten genes - just select a gene to plot using the radio buttons:
+
+```{r, echo=FALSE}
+radioButtons("genenum", "Gene:", list(1, 2, 3, 4, 5, 6, 7, 8, 9, 10), inline=TRUE)
+plotOutput("genePopPlot")
+dataTableOutput("geneParamTable")
+```
+
+```{r population distributions, context="server"}
+gene_data<-data.frame(control_mean=c(100, 100, 100, 100, 30, 10, 100, 50, 50, 20),
+                      control_sd = c(10, 3, 100, 10, 5, 2, 10, 10, 10, 2),
+                      treated_mean=c(200, 100, 200, 100, 10, 10, 50, 100, 200, 10),
+                      treated_sd  =c(10, 3, 100, 50, 2, 2, 10, 10, 20, 2))
+
+one_gene<-reactive(gene_data[input$genenum,])
+pop_curves<-reactive({
+  data.frame(
+    x=rep(seq(-500,1000, 0.1), 2),
+    y=c(dnorm(seq(-500,1000, 0.1), one_gene()$control_mean, one_gene()$control_sd),
+        dnorm(seq(-500,1000, 0.1), one_gene()$treated_mean, one_gene()$treated_sd)
+    ),
+    Treatment = rep(rep(c("Control", "Treatment"), each=15001))
+  )
+})
+
+output$genePopPlot<-renderPlot({
+  ggplot(pop_curves(), aes(x, y, colour=Treatment)) + geom_line() + theme_bw() + 
+    xlim(c(min(one_gene()$control_mean - 4*one_gene()$control_sd, one_gene()$treated_mean - 4*one_gene()$treated_sd),
+           max(one_gene()$control_mean + 4*one_gene()$control_sd, one_gene()$treated_mean + 4*one_gene()$treated_sd)))
+})
+output$geneParamTable<-renderDataTable(DT::datatable(one_gene(), options=list(searching=FALSE, paging=FALSE, dom="t")))
+```
+
+
+With this information, we can clearly see whether the distributions differ, and what their differences are. (Where only one curve appears, the genes have the same expression - one curve has been drawn on top of the other.)
+
+1. What is the true difference between Gene 1 and Gene 3?
+2. Genes 2 and 4 had similar means. How do their distributions differ?
+
+But when we study gene expression, we don't know what the parameters of these distributions are. We only have our expression measures. We have good reason to assume that our data is drawn from some probability distribution - we'll discuss the details of that on Day 3. But we have to estimate the parameters of the distribution from our data.
+
+Try your hand at this. The plot below shows a random set of data points drawn from a distribution with a randomly chosen mean and standard deviation, and a curve to match the parameters on the sliders. Adjust the mean and standard deviation of the sample distribution to match the data points. Then check the box to show the true curve and see how close you got. Click resample to generate a new sample from a different distribution (but turn off the true curve first).
+
+```{r, echo=FALSE}
+fixedRow(
+  column(6, 
+    sliderInput("mean_fit", label = "Mean:",
+                min = 0, max = 200, value = 100, step = 1),
+    sliderInput("sd_fit", label = "Standard Deviation:",
+                min = 5, max = 40, value = 10, step = 1)
+  ),
+  column(6, 
+    sliderInput("replicates_fit", label= "Replicates:",
+                min = 1, max = 50, value = 30, step = 1),
+    actionButton("resample_fit", "Resample"),
+    checkboxInput("truecurve", label = "Show true curve", value=FALSE)
+  )
+)
+fixedRow(
+  column(12,
+    plotOutput("drawHandFitPlot")
+  )
+)
+```
+
+```{r hand fit distribution, context="server"}
+mean_sd_fit<-reactive({
+  input$resample_fit
+  c(runif(1,50,150), runif(1,5,40))
+})
+
+dataInput_fit<-reactive({
+  data.frame(x=rnorm(input$replicates_fit, mean_sd_fit()[1], mean_sd_fit()[2]))
+})
+
+output$drawHandFitPlot<-renderPlot({
+  p <- ggplot(dataInput_fit(), aes(x)) + geom_point(aes(y=0)) + stat_function(fun=dnorm, n=101, args=list(mean=input$mean_fit, sd=input$sd_fit)) + theme_bw() + xlim(-100, 300)
+  if (input$truecurve) p <- p + stat_function(fun=dnorm, n=101, args=list(mean=mean_sd_fit()[1], sd=mean_sd_fit()[2]), lty="dashed")
+  p
+})
+```
+
+How close can you get to the true distribution? What happens if you reduce the number of replicates below 10?
+
+Because samples often don't represent the true population distribution, especially when the number of replicates is low, it is very difficult to fit distributions to data accurately. A vast amount of research goes into developing methods to fit distributions like this, and gene expression methods are no different. But normal distributions are well understood and can be fit quite easily in R.
+
+This plot shows the population distribution for Gene 1 (mean 100, standard deviation 10) as a dashed line, and the fitted distribution estimated from the data points as a solid line. Try resampling the data a few times to see how the fitted distribution changes.
+
+```{r, echo=FALSE}
+fixedRow(
+  column(6,
+  sliderInput("replicates_func", label= "Replicates:",
+                min = 1, max = 200, value = 30, step = 1)
+  ),
+  column(6,
+    actionButton("resample_func", "Resample")
+  )
+)
+fixedRow(
+  column(12,
+    plotOutput("drawFunctionFitPlot")
+  )
+)
+
+```
+
+```{r function fit distribution, context="server"}
+dataInput_func<-reactive({
+  input$resample_func
+  data.frame(x=rnorm(input$replicates_func, 100, 10))
+})
+
+output$drawFunctionFitPlot<-renderPlot({
+  fit <- fitdistr(dataInput_func()$x, "normal")$estimate
+  ggplot(dataInput_func(), aes(x)) + geom_point(aes(y=0)) + stat_function(fun=dnorm, n=101, args=list(mean=100, sd=10), lty="dashed") + theme_bw() + xlim(50, 150) + ylim(0,0.1) + stat_function(fun=dnorm, n=101, args=list(mean=fit[1], sd=fit[2]))
+})
+```
+
+What happens if you increase the number of replicates to 100, or 200? Now what about 3, 6, 12 replicates? How accurate is the fitted distribution when we only have a few replicates?
+
+Remember that *all* of these samples have been taken from the same population distribution; it's just that a random sample will never be distributed in exactly the same way, and the fewer the data points, the harder it is to estimate the true distribution.
+
+## Comparing distributions
+
+So what use is all of this distribution fitting? How does it help us to find differentially expressed genes? Once we have fitted distributions for each condition, we can compare the fitted distributions to see how likely it is they have come from the same population distribution.
+
+We calculate a *$p$ value*, which is the probability that two fitted distributions have come from the same population distribution. The $p$ value is related to (although not exactly the same as) the amount of overlap between the two distributions; if the distributions have very little overlap, the $p$ value will be low; if they overlap a lot, the $p$ value will be high.
+
+So if the $p$ value is low, we can say the fitted distributions are likely to have come from two different population distributions, and so we can claim that our gene is differentially expressed.
+
+How low? It is conventional to set a $p$ value threshold of 0.05, or 0.01, but these are just conventions; there is nothing magical about them that makes genes with $p$ values of 0.049 significant but genes with $p$ values of 0.051 insignificant. Nevertheless, we will add one star for a $p$ value less than 0.05, two stars for less than 0.01 and three stars for less than 0.001.
+
+In the plot below, we are fitting two distributions for one gene, with population distributions shown as dashed lines and fitted distributions from the samples shown as solid lines. The control mean for the gene is 100 as before, and you can adjust the standard deviation with a slider. But rather than presenting a second mean and standard deviation for the treated distribution, there is a single treatment effect size parameter. This specifies how much the treatment shifts the control distribution. It is effect sizes like these that we are usually most interested in estimating; you can see an estimate of the treatment effect size (roughly calculated as the difference in the means of the fitted distributions) below the p value.
+
+
+```{r, echo=FALSE}
+fixedRow(
+  column(6, 
+    sliderInput("sd_comp", label = "Standard Deviation:",
+                min = 5, max = 50, value = 10, step = 1),
+    sliderInput("treatment_comp", label = "Treatment Effect Size:",
+                min = -100, max = 100, value = 100, step = 1)
+    ),
+  column(6, 
+    sliderInput("replicates_comp", label= "Replicates:",
+                min = 2, max = 50, value = 6, step = 1),
+    actionButton("resample_comp", "Resample"),
+    textOutput("pvalue_comp"),
+    textOutput("fitted_effect_size_comp")
+  )
+)
+fixedRow(
+  column(12,
+    plotOutput("compareNormPlot")
+    )
+)
+```
+
+```{r comparing Normal distributions, context="server"}
+gene_comp <- reactive({
+  input$resample_comp
+  data.frame(
+    gene_control = rnorm(input$replicates_comp, 100,                      input$sd_comp),
+    gene_treated = rnorm(input$replicates_comp, 100+input$treatment_comp, input$sd_comp)
+  )
+})
+
+ttest_comp <- reactive(t.test(gene_comp()$gene_control, gene_comp()$gene_treated))
+
+sig <- function(p.value) {
+  if (p.value <= 0.001) "***"
+  else if (p.value <= 0.01) "**"
+  else if (p.value <= 0.05) "*"
+}
+
+sig_comp <- reactive(sig(ttest_comp()$p.value))
+
+gene_df_comp<-reactive({
+  input$resample_comp
+  data.frame(
+    x=c(gene_comp()$gene_control, gene_comp()$gene_treated),
+    Treatment = rep(c("Control", "Treated"), each=input$replicates_comp)
+  )
+})
+
+calculate_curves <- function(mean, sd, label) {
+  data.frame(
+    x=seq(-100,300),
+    y=dnorm(seq(-100,300), mean, sd),
+    Treatment = rep(label, each=401)
+  )
+}
+
+fit_control_params <- reactive(fitdistr(gene_comp()$gene_control, "normal")$estimate)
+fit_treated_params <- reactive(fitdistr(gene_comp()$gene_treated, "normal")$estimate)
+
+fitted_comp<-reactive({
+  bind_rows(
+    calculate_curves(fit_control_params()[1], fit_control_params()[2], "Control"),
+    calculate_curves(fit_treated_params()[1], fit_treated_params()[2], "Treated")
+  )
+})
+
+curves_comp<-reactive({
+  bind_rows(
+    calculate_curves(100,                        input$sd_comp, "Control"),
+    calculate_curves(100 + input$treatment_comp, input$sd_comp, "Treated")
+  )
+})
+
+output$compareNormPlot<-renderPlot({
+  ggplot(gene_df_comp(), aes(x, colour=Treatment)) + 
+    geom_point(aes(y=0)) + theme_bw() + ylim(0, 0.1) + xlim(-100, 300) +
+    geom_line(aes(x, y, colour=Treatment), lty="dashed", data=curves_comp()) + 
+    geom_line(aes(x, y, colour=Treatment), data=fitted_comp())
+})
+output$pvalue_comp<-renderText({paste("p value:", round(ttest_comp()$p.value, 10), sig_comp())})
+output$fitted_effect_size_comp<-renderText({paste("Estimated Treatment effect size:", round(fit_treated_params()[1]-fit_control_params()[1],2))})
+```
+
+Let's explore this a little.
+
+1. Hit resample several times and see if the p-value changes, and how the treatment effect size changes. Note the p-value here is vanishingly small and highly significant, because the two distributions are clearly very different. But the fitted distributions often don't look that close to the true distributions, and the treatment effect sizes can vary.
+
+2. Try increasing the number of replicates to 50. Now the p-value is 0; it's not actually 0, it's just so vanishingly small that it is being rounded to 0. Try resampling the data and see how accurate the distributions and the treatment effect sizes are now.
+
+3. Now reduce the effect size to 0. Resample for while; do the effect sizes and p-values seem reasonable, given that there is no true effect? (Do you ever get a significant result?)
+
+4. Now reduce the number of replicates to 3 and the standard deviation to 20. Can you get a significant result now? In general, how is the effect size varying?
+
+5. The last question showed that it is quite possible to get a significant result even when there is no treatment effect, because we have some source of variation and have a limited sample. Let's try another possibility - can we fail to detect an effect even when it is present? Set the standard deviation to 10, replicates to 3 and treatment effect size to 20. How often do you get a significant result?
+
+6. How many replicates do you need to get a reliably significant result for an effect size like this? What about an effect size of 10? What if you increase the standard deviation? And now decrease it?
+
+
+Hopefully this has shown you that p-values are not sacrosanct, and that we may fail to detect real effects (false negatives) as well as detecting spurious ones (false positives). But there are various ways of handling these problems, especially for RNA-Seq where we have a large number of genes to compare. We'll talk about this in more detail on Day 3.
+
+
+## Summary
+
+We have seen that finding differentially expressed genes that we care about means looking at three different aspects of gene expression: the overall abundance of the genes, the relative differences between genes (fold changes), and the variation in gene expression (measured using p values). We will need to take all three of these aspects into account when we judge our sets of interesting genes.
+
+With these foundations in place, we can now turn to studying qPCR and RNA-Seq in detail.
+

@@ -1,0 +1,322 @@
+---
+title: "Differential Gene Expression Analysis Day 2: Sleuth Tutorial"
+runtime: shiny_prerendered
+output: learnr::tutorial
+---
+
+<style type="text/css">
+body{ font-size: 170%; }
+</style>
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, comment = NA)
+library(tidyverse)
+library(shiny)
+library(DT)
+library(learnr)
+```
+
+| [Day 1: Concepts](../day1/day1.Rmd) | [Day 2: Sleuth tutorial](./day2.Rmd) | [Day 3: RNA-Seq analysis](../day3/day3.Rmd) |
+|-------------------------------------|--------------------------------------|---------------------------------------------|
+
+## Sleuth tutorial
+In this session, we will run a complete differential expression analysis and take a quick look at the results. Tomorrow, we will go through each of the steps in detail and explain what we are doing, but for now, just try to get some results by copying and pasting the commands, so you can get a feel for the process. Feel free to look ahead to the later material if you want to understand what's happening, but we will have plenty of time for this tomorrow.
+
+Almost all differential expression packages are written in R, so we will need to install and use R to do our analyses. We are going to use a package called sleuth, so we will have to install that as well. We are also going to use a nice interface to R called RStudio, which will make handling our input files and data easier.
+
+### Installing R and RStudio
+
+1. First, [download R](https://cran.rstudio.com) and install it:
+
+ * If you are using Windows, see the download link and instructions here: https://www.stats.bris.ac.uk/R/bin/windows/base/
+ * If you are using a Mac, download the latest package (pkg file) here, open it, and follow the instructions: https://www.stats.bris.ac.uk/R/bin/macosx/
+
+2. Next, [download RStudio](https://www.rstudio.com/products/rstudio/download/#download). Use the links under "Installers for Supported Platforms" to download an appropriate package for your computer, open the package and follow the installation instructions.
+
+3. Open RStudio and create a New Project for the course in a folder of your choice:
+   
+   * Navigate through the menus to make a new project: **File** → **New Project...** → **New Directory** → **New Project**
+   * Enter a name for the project and find a folder for it; you may need to use 'Browse...' to find a suitable folder
+   * Click 'Create Project' to create and open the project in RStudio
+
+If you close RStudio (for example, before you come back to the course tomorrow), go to **File** → **Recent Projects** in the menus to find and reopen your project.
+
+## Just enough R to be dangerous
+
+This is not an R course; if you want to learn the basics of R, please try the free courses at [DataCamp](https://www.datacamp.com), and then read at least the first few chapters of [R for Data Science](https://r4ds.had.co.nz). We're just going to use R to run basic commands in Sleuth. But here are the core bits of R you need so you can understand what's going on with Sleuth commands.
+
+R has a command line interface; we type commands, and it gives us responses. We enter commands at the *Console* (bottom left panel of RStudio). Type this at the console and hit `RETURN` (the grey boxes show commands you should type, the white boxes show the expected output):
+```{r}
+2 + 2
+```
+
+We can use R for all kinds of basic calculations. We can also store the results in *variables*:
+```{r}
+x <- 2 + 2
+x
+y <- 3 * 3
+y
+x + y
+```
+
+If you look at the Environment tab in the top right of RStudio, you will see the `x` and `y` variables you have just created. They are called variables because we can vary their values:
+
+```{r}
+x <- 5 - 3
+x
+x + y
+```
+
+We can also use the values of variables when we update them:
+```{r}
+x <- x + 1
+x
+x + y
+```
+
+In this last command above, we have given R some input (x and y), told it to do something to the input (add x and y together), and R has given us some output (12). R has a lot of *functions* that do the same thing: take some input, do something with it, and return some output. `+`, `-` and `*` are all functions, of a sort. Here's another one, more typical of the functions we will see later:
+```{r}
+seq(1,10)
+```
+
+`seq` is a function that creates a sequence of numbers from the two numbers we give it as input. A function call always has the name of the function, followed by brackets, between which we put the input values for the function, separated by commas. We call the input values *arguments* to the function. `seq` has several additional arguments, for example:
+
+```{r}
+seq(1,10,2)
+```
+
+For any R function, we can see what arguments it has by looking at its help page, which should appear in the bottom right panel in RStudio. These help pages are quite daunting, because they are exhaustive references about the function, not simple introductions. But have a look at the first three arguments listed here:
+```{r, eval=FALSE}
+?seq
+```
+
+The first three arguments to seq are called `from`, `to` and `by`, which are the three arguments we have used above. We can be explicit about this by naming the arguments:
+```{r}
+seq(from=1, to=10, by=2)
+```
+
+While R comes with many functions built in, most of the power of R will come from loading external *packages* and using functions from those packages. R has two major package *repositories*, [CRAN](https://cran.rstudio.com) (which is for any kind of R package) and [Bioconductor](https://www.bioconductor.org) (which is for biological packages). Most of the major RNA-Seq packages, such as DESeq2, edgeR or limma, are in Bioconductor.
+
+That's all you need to get started. Try these exercises if you want to check your understanding, but feel free to continue to the next topic if you feel comfortable.
+
+### Exercises
+1. Create a variable `z`, which multiplies `x` and `y`. What is its value?
+2. Set `y` to 10. What is `z` now? Note that z is not automatically updated; it was set once, before you changed the value of `y`, and is not changed when `y` changed. To update `z`, repeat the command for setting `z`.
+3. Create a sequence from 0 to 30, incrementing by 3 each time, and assign the result to a variable.
+4. `length` is another function in R, which takes one argument as input and returns the number of values in the argument. Call `length` on the variable you just created to see how long the sequence is.
+5. Have a look at the help page for `seq` and see if you can create a sequence from 0 to 30 with length 11 using an argument we haven't used before.
+
+
+
+
+## Installing and loading Sleuth
+
+Now we need to install Sleuth. Sleuth is not part of one of the standard R package repositories, so unfortunately installation takes a few steps. We are going to follow the [Sleuth installation instructions](https://pachterlab.github.io/sleuth/download). We first need to a package called `rhdf5`, which Sleuth uses. `rhdf5` is part of [Bioconductor](https://www.bioconductor.org), so we need to load the Bioconductor loading script first. We then need to install Sleuth from [GitHub](https://github.com/pachterlab/sleuth), which requires another package from CRAN called `devtools`.
+
+In the Console in RStudio, type or paste each of these lines separately and hit `RETURN` after each one:
+```{r, eval=FALSE}
+source("http://bioconductor.org/biocLite.R")
+biocLite("rhdf5")
+install.packages("devtools")
+devtools::install_github("pachterlab/sleuth")
+```
+
+If you have trouble with this, see the section below.
+
+Finally, we will load Sleuth into our environment. We only need to install the package once, but we will need to load Sleuth like this every time we use it. This is like using Microsoft Word; we only need to install new versions of Word infrequently, but we need to open it every time we want to work on a document.
+
+```{r, eval=FALSE}
+library(sleuth)
+```
+
+----
+
+### If you can't install packages
+
+There are many reasons why package installation might go wrong, but the most common problem is that you do not have permission to write to R's package repository. This often happens when you run R on a machine you don't own.
+
+One way around this problem is to create an additional package repository somewhere that you *can* write to. R may have prompted you to do this already. If you see a message like this:
+```
+Installing package(s) ‘rhdf5’
+Warning in install.packages(pkgs = doing, lib = lib, ...) :
+  'lib = "/system/library"' is not writable
+Would you like to use a personal library instead? (yes/No/cancel)
+```
+Just say 'yes' and R will set up a personal library for you in a directory you can write to. You should be able to load packages from there as normal.
+
+If you don't see this message and still get errors, you can specify your own library.
+
+First, make a folder somewhere you can write to. To make things easy for the course, you might create a folder in your project folder. Call this folder `packages` (or whatever you prefer).
+
+Tell R you want to load packages from this folder like this:
+```{r, eval=FALSE}
+.libPaths( c( .libPaths(), "packages") )
+```
+
+Then install packages into this folder like this:
+```{r, eval=FALSE}
+source("http://bioconductor.org/biocLite.R")
+biocLite("rhdf5", lib="packages")
+install.packages("devtools", lib="packages")
+devtools::install_github("pachterlab/sleuth", lib="packages")
+```
+
+You should then be able to load sleuth with `library(sleuth)`.
+
+If you are asked to update existing packages, say 'no' or 'None'.
+
+If you get a warning `installation path not writeable, unable to update packages`, followed by a list of packages, that's OK - we don't need to update existing packages.
+
+If you are still having problems, please ask us for help!
+
+
+
+
+
+## Preparing samples
+
+For this tutorial, we are using a data set from [Schurch et al. 2016](https://dx.doi.org/10.1261/rna.053959.115), which reports on the sequencing of a set of 96 yeast samples to investigate the power of RNA-seq tools. The samples included 48 wild-type samples and 48 SNF2 mutant samples. The SNF2 protein is part of a transcriptional activator, so mutating this gene alters transcription of genes considerably, producing a lot of differentially expressed genes.
+
+We have prepared Salmon output for each of the samples from this paper. You are going to download a subset of these samples and run them through Sleuth. This will require not only the Salmon output, but also a file describing the samples. We'll create this sample description file first.
+
+1. Choose a set of replicates. Each of you are going to use a randomly chosen set of replicates, and we will compare the results tomorrow to see how consistent they are. Set a number of replicates on the slider to generate a random set of samples, and then click the `Download TSV` button to download a file describing these replicates.
+
+```{r, include=FALSE, context="server"}
+day2_samples<-read_tsv("yeast_samples.tsv") %>% mutate(day=factor(day, levels=c("One", "Two", "Three")))
+day2_text<-list.files()
+```
+
+```{r, echo=FALSE}
+fixedRow(
+  column(6,
+    radioButtons("subsample", "Number of replicates:", list(3, 6, 9, 12), inline=TRUE, selected=6)
+  ),
+  column(3,
+    downloadButton("downloadTable", "Download TSV")
+  ),
+  column(3,
+    downloadButton("downloadSalmon", "Download Salmon files")
+  )
+)
+fixedRow(
+  column(12,
+    dataTableOutput("sampleTable"),
+    textOutput("repText")
+  )
+)
+```
+
+```{r sample table, context="server"}
+dataInput<-reactive(
+  day2_samples %>% 
+    group_by(genotype, day) %>% 
+    sample_n(as.numeric(input$subsample)/3) %>% 
+    separate(sample, c(NA, "number"), sep="_", remove=FALSE) %>% 
+    mutate(number=as.integer(number)) %>% 
+    arrange(genotype, number) %>% 
+    select(sample, genotype, day, path)
+)
+
+output$sampleTable<-renderDataTable({
+  DT::datatable(dataInput(), options=list(searching=FALSE, paging=FALSE))
+})
+
+output$downloadTable<-downloadHandler(
+  filename = function() {"yeast_samples_subset.tsv"},
+  content = function(file) {
+    write_tsv(dataInput(), file)
+  }
+)
+output$downloadSalmon<-downloadHandler(
+  filename = function() {"yeast_samples_subset.zip"},
+  content = function(file) {
+    zip(file, paste("salmon/", dataInput()$sample, sep=""))
+  }
+)
+```
+
+The four columns in this table are:
+
+* **sample**: the name of the sample
+* **genotype**: Mutant or \_WT for Wild Type (we'll explain the \_ tomorrow)
+* **day**: the day the samples were prepared (One, Two, Three)
+* **path**: the location of the Salmon file for this sample
+
+2. Copy your `yeast_samples_subset.tsv` file to your project folder.
+
+3. Open your `yeast_samples_subset.tsv` file in RStudio (`File` → `Open File...`). This is a Tab Separated Values (TSV) file; it contains a table with four columns and a row for each sample, with a header row at the top, and with each column separated by tabs on each line. Compare the table above to your file. We often use files in this format to present data in a way that both humans and computers can understand.
+
+4. Now click the `Download Salmon files` button to download the Salmon output for your subset of samples. This will create a ZIP file of all the Salmon output. This will take several minutes to run and it may look like nothing is happening - please be patient.
+
+5. Copy or save the `yeast_samples_subset.zip` file to your project folder.
+
+6. Unzip the `yeast_samples_subset.zip` file. It should contain one folder called `salmon`, and that folder should contain one folder for each of the replicates in your table (and in the TSV file). Each sample folder should contain one `abundance.h5` file. If you have files like this, you're ready to run Sleuth. (If you have files or folders whose names begin with a `.`, you can ignore them.)
+
+7. Note that the `salmon` folder you've just unzipped should be placed in your project folder. The `path` column in the table tells Sleuth where to look for the data for each sample. You can see the `path` contains `salmon/` at the front of each sample name. This means Sleuth will start from the folder it's running in, then look for a folder called salmon, then for a folder for the sample. If you put the `salmon` folder somewhere else, Sleuth won't work.
+
+If you have any problems downloading files from this page, you can also download the data from [this Google Drive folder](https://drive.google.com/drive/folders/1GtgZ967s1BOm-DpXPG_XXfsNqxZpbZDN).
+
+## Running Sleuth
+
+Actually running Sleuth is easier than the steps we've taken so far. It's not unusual when doing data analysis for the preparation and validation steps to take most of the time, and the actual analysis to be quite straightforward. For now, just copy and paste the commands that follow, so you can get used to the process of running Sleuth; we'll explain exactly what the commands are doing tomorrow.
+
+1. Load your TSV file of sample information into R with the `read.table` function:
+```{r, eval=FALSE}
+samples<-read.table("yeast_samples_subset.tsv", sep="\t", header=TRUE, stringsAsFactors=FALSE)
+```
+
+Have a look at the variable `samples` you just created - just type `samples` at the Console, just like you did when viewing `x` and `y` earlier. How does this compare to your `yeast_samples_subset.tsv` file? How does RStudio describe this variable in the Environment panel?
+
+2. Now we can run Sleuth on our samples. We begin by creating a Sleuth object from our samples:
+```{r, eval=FALSE}
+so <- sleuth_prep(samples, read_bootstrap_tpm=TRUE)
+```
+
+This command calls the `sleuth_prep` function on our `samples` table and creates a new variable `so`, or Sleuth Object. This object will contain all the information about our analyses, and we will update it several times as we continue. This step loads all of the transcript expression data for our samples into R and stores it in the `so` object. We'll come back to what `read_boostrap_tpm` does tomorrow.
+
+`sleuth_prep` and other Sleuth commands may output a lot of messages. Feel free to read them, but don't worry too much about them, as long as they don't report errors (warnings are usually OK).
+
+3. Next, we will fit two models to our data using the variables from our sample table with the `sleuth_fit` function (more about this process tomorrow):
+```{r, eval=FALSE}
+so <- sleuth_fit(so, ~genotype+day, "full")
+so <- sleuth_fit(so, ~day, "reduced")
+```
+
+4. Now we compare the two models we have just fit using a likelihood ratio test with the `sleuth_lrt` function:
+```{r, eval=FALSE}
+so <- sleuth_lrt(so, "reduced", "full")
+```
+
+5. And finally we run a pairwise Wald test to compare the two different genotypes with the `sleuth_wt` function. This test produces a list of genes that are differentially expressed between the wild type and mutant samples:
+```{r, eval=FALSE}
+so <- sleuth_wt(so, "genotypeMutant")
+```
+
+6. We can save our Sleuth object so we can reload it later without rerunning the analysis:
+
+```{r, eval=FALSE}
+sleuth_save(so, "yeast_sleuth_analysis.rds")
+```
+
+7. Sleuth provides a very useful visual interface for us to explore its results. You can open this yourself with the `sleuth_live` function:
+```{r, eval=FALSE}
+sleuth_live(so)
+```
+
+This will tie up your console so you will be unable to enter any other R commands until you close the results window.
+
+8. We can see a list of the differentially expressed genes Sleuth has found by navigating to **analyses** → **test table**. Take a look at the table and see if you can find the $q$ value column. The genes are sorted so that the most significant genes appear first in the list. (We will explain why we use $q$ values rather than $p$ values tomorrow.)
+
+9. Choose one of the most differentially expressed genes, copy its name, and move to the transcript view (**analyses** → **transcript view**). Enter the name into the **transcript** box; after a few seconds a plot should appear showing the expression values for that transcript. You can modify this plot; for example, try colouring the plot by day instead of genotype by selecting 'day' in the **color by** dropdown box. Does the gene look differentially expressed to you? Does it vary between genotypes? What about by day?
+
+10. Go back to the test table and click the **Download Table** button in the bottom right. This will save a CSV file containing all the data in the table. If you are given a choice of name, use something like `yeast_results.csv`. CSV stands for Comma Separated Values, and is like the TSV file we saw earlier, but using `,` as a separator, not tabs. You can open this file in Excel or Numbers to browse your results.
+
+11. If you're comfortable in R, all of the plots and tables in the Sleuth interface can be generated with Sleuth function calls. The Sleuth webpage has a list of [Sleuth functions](https://pachterlab.github.io/sleuth/manual). For example, `sleuth_results` will produce the test table:
+
+```{r, eval=FALSE}
+sleuth_results(so, "genotypeMutant")
+```
+
+12. Look at the full test table (in R, Excel or Numbers). If we assume we will accept genes with a $q$ value of 0.05, how many differentially expressed genes do we have? If 5% of these are false positives, how many false positives are we likely to have?
+
+Congratulations! You've just completed a full RNA-Seq differential expression analysis and produced a set of differentially expressed genes. Tomorrow, we will go back through this process, explain exactly what we did, explore the rest of the sleuth interface, and discuss several other issues you should consider when doing an RNA-Seq experiment. Until then, relax!
