@@ -1,6 +1,4 @@
----
-title: York Gene Expression Course
----
+## York Gene Expression course differential expression materials
 
 This repository contains R Markdown documents and associated files for the differential expression sections of the University of York's Gene Expression Technologies course, first delivered in March 2019 by the [Genomics and Bioinformatics Lab](https://www.york.ac.uk/biology/technology-facility/genomics/).
 
