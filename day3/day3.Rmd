@@ -32,12 +32,33 @@ Today we will go through what we did yesterday with Sleuth and explain how each 
 
 We will go into some detail about how differential expression tools work, not all of which is strictly necessary to understand your results. Feel free to skip the sections marked Optional if they don't interest you or if you are short of time. But if a section is not marked Optional, please read it!
 
-Before we start, reload your Sleuth analysis from yesterday so we can look at the results as we go through:
+Before we start, reload your Sleuth analysis from yesterday so we can look at the results as we go through, and open up the Sleuth web interface:
 
 ```{r, eval=FALSE}
 library(sleuth)
 so <- sleuth_load("yeast_sleuth_analysis.rds")
+sleuth_live(so)
 ```
+
+If you didn't finish the analysis, look at this [Google Drive folder](https://drive.google.com/drive/u/1/folders/1GtgZ967s1BOm-DpXPG_XXfsNqxZpbZDN). You should see a set of `rds` files with names like this:
+
+`yeast_subsample_3_1.rds`
+
+Each `rds` file is a Sleuth analysis of a random subset of yeast samples. Each number of replicates (3, 6, 9, 12) has five random samples, 1-5. The first number in the filename is the number of replicates sampled, the second is the random sample number.
+
+1. Pick *one* of the 5 samples for the number of replicates you were working with yesterday and download that file. To download, click on the file, then the '3 vertical dots' icon in the top right, then select 'Download'.
+
+2. Move the file into your project folder.
+
+3. Load the file into Sleuth like this (replacing the filename with whatever the name of your file is):
+
+```{r, eval=FALSE}
+library(sleuth)
+so <- sleuth_load("yeast_subsample_3_1.rds")
+sleuth_live(so)
+```
+
+You can now use this data set for the rest of this morning.
 
 ## Loading data
 
@@ -84,7 +105,7 @@ so <- sleuth_fit(so, ~genotype+day, "full")
 so <- sleuth_fit(so, ~day, "reduced")
 ```
 
-We'll come back to the `read_bootstrap_tpm` argument later (in the "Types of variance" and "TPMs" sections). Here, we'll start to explore what it means to fit a model.
+We'll come back to the `read_bootstrap_tpm` argument later (in the "TPMs" and "Types of variance" sections). Here, we'll start to explore what it means to fit a model.
 
 We saw on Day 1 how we could estimate the effect of a treatment by fitting data from different conditions to distributions, and then comparing those distributions. We used the normal distribution then, but the normal distribution does not fit RNA-seq data well. Our raw data are read counts, which are discrete and cannot be below 0, whereas the normal distribution is continuous and can fit negative values.
 
@@ -658,7 +679,7 @@ We can fit more complicated models with Sleuth as well, although we won't do any
 
 or just
 ```
-~ Treament * Temperature
+~ Treatment * Temperature
 ```
 
 which means the same thing. These interaction terms will also show up in the list of models, so you can find genes influenced by the interactions with `sleuth_wt`.
@@ -957,27 +978,10 @@ sleuth_save(so_human, "sleuth_object_human.rds")
 sleuth_live(so_human)
 ```
 
-We have made the `sleuth_object_human.rds` file available so you don't have to do your own analysis. Download this file by clicking the button below (this will take some time and it may look as if nothing is happening - please be patient), then move the file to your project folder:
+We have made the `sleuth_object_human.rds` file available so you don't have to do your own analysis:
 
-```{r, echo=FALSE}
-fixedRow(
-  column(12, 
-    downloadButton("downloadHuman", "Download human Sleuth data")
-  )
-)
-fixedRow()
-```
-
-```{r human download, context="server"}
-output$downloadHuman<-downloadHandler(
-  filename = function() {"sleuth_object_human.rds"},
-  content = function(file) {
-    human_data <- sleuth_load("sleuth_object_human.rds")
-    sleuth_save(human_data, file)
-  }
-)
-```
-
+1. Download this file from [this link](https://drive.google.com/open?id=1DMB_jJdOByehdxBOpKCSNdis29yT30yl). One the Google Drive page appears, the download button is in the top right.
+2. Move the file to your project folder.
 
 Once the `sleuth_object_human.rds` file is in your project folder, you can load it into Sleuth and run `sleuth_live` to see the results:
 ```{r, eval=FALSE}
